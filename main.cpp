@@ -6,24 +6,34 @@
 #include <cstddef>
 #include <boost/format.hpp>
 #include <limits>
+
 #ifdef _OPENMP
 #include <omp.h>
 #endif
 
-using namespace std;
+using std::cout;
+using std::cerr;
+using std::endl;
+using std::array;
 
-typedef double real;
+typedef double real; //!< define precision (choose from double, float, ...)
 
 int main()
 {
-
     //-------GLOBAL CONSTANTS-----------------
-    constexpr real pi = 4*atan(1);
+    const real pi = 4*atan(1);
     const real eps = std::numeric_limits<real>::epsilon();
+    #ifdef _OPENMP
+    const u_char num_procs = omp_get_num_procs(); //!< number of available processors
+    #else
+    const u_char num_procs = 1;
+    #endif
+    cerr << "processors in use: " << short(num_procs) << endl;
 
     //-------SIMULATION PARAMETERS------------
     constexpr u_char Nx = 21; //!< Number of lattices in the x-direction.
     constexpr u_char Ny = Nx; //!< Number of lattices in the y-direction.
+    typedef real realm[Nx*Ny]; //!<  real matrix, column/x-wise
     u_char Length = Nx-1; //!< Length of the square computational domain in lattice units.
     real Re = 10.0; //!< Reynolds number.
     real tau = 0.65; //!< Relaxation time.
@@ -42,8 +52,6 @@ int main()
     const char ex[9] = {0, 1, -1, 0, 0, 1, -1, -1, 1}; //!< X-component of the particle velocity.
     const char ey[9] = {0, 0, 0, 1, -1, 1, 1, -1, -1}; //!< Y-component of the particle velocity.
 
-    typedef real realm[Nx*Ny]; //!<  real matrix, column/x-wise
-
 
     //-------INITIALIZATION OF THE VARIABLES-------
     realm Ux; //!< X-component of the fluid velocity in the computational domain.
@@ -51,23 +59,24 @@ int main()
     realm rho; //!< Fluid density in the computational domain.
     realm Uexact; //!< X-component of the fluid velocity in the physical space.
     realm Vexact; //!< Y-component of the fluid velocity in the physical space.
-    std::array<realm, Nl> feq; //!< Particle equilibrium distribution function.
-    std::array<realm, Nl> f; //!< Particle distribution function.
+    array<realm, Nl> feq; //!< Particle equilibrium distribution function.
+    array<realm, Nl> f; //!< Particle distribution function.
 
     u_char orow[Nl] = {}; //!<  offset for streaming, row (y)
     u_char ocol[Nl] = {}; //!<  offset for streaming, col (x)
 
     //-------INITIALIZATION OF THE SIMULATION (t=0)-------
+    #pragma omp parallel for
     for (u_char j = 0; j < Ny; ++j) {
         for (u_char i = 0; i < Nx; ++i) {
             Ux[i+j*Nx] = -Ulat*cos(Kx*i)*sin(Kx*j);
-            Uy[i+j*Nx] = Ulat*sin(Kx*i)*cos(Kx*j);
+            Uy[i+j*Nx] = +Ulat*sin(Kx*i)*cos(Kx*j);
             real P = Ro*CsSquare-0.25*Ulat*Ulat*(cos(2*Kx*i)+cos(2*Kx*j)); //!< Pressure defined in the computational space.
             rho[i+j*Nx] = P/CsSquare;
-
         }
     }
 
+    #pragma omp parallel for
     for (u_char k = 0;  k <Nl; ++k) {
         for (u_char j = 0; j < Ny; ++j) {
             for (u_char i = 0; i < Nx; ++i) {
@@ -82,6 +91,7 @@ int main()
     //-------MAIN LOOP-------
     for (u_char t = 0; t < Tsim; ++t) {
         //-------COLLISION-------
+        #pragma omp parallel for
         for (u_char k = 0; k < Nl; ++k) {
             for (u_char j = 0; j < Ny; ++j) {
                 for (u_char i = 0; i < Nx; ++i) {
@@ -97,6 +107,7 @@ int main()
         }
 
         //-------CALCULATION OF THE MACROSCOPIC VARIABLES-------
+        #pragma omp parallel for
         for (u_char j = 0; j < Ny; ++j) {
             for (u_char i = 0; i < Nx; ++i) {
                 real rsum = 0; //!< Fluid density counter.
@@ -117,6 +128,7 @@ int main()
         }
 
         //-------CALCULATION OF THE EQUILIBRIUM DISTRIBUTION FUNCTION-------
+        #pragma omp parallel for
         for (u_char j = 0; j < Ny; ++j) {
             for (u_char i = 0; i < Nx; ++i) {
                 for (u_char k = 0; k < Nl; ++k) {
@@ -136,6 +148,7 @@ int main()
     }
 
     //-------EXACT ANALYTICAL SOLUTION-------
+    #pragma omp parallel for
     for (u_char j = 0; j < Ny; ++j) {
         for (u_char i = 0; i < Nx; ++i) {
             Uexact[i+j*Nx] = -Ulat*cos(Kx*i)*sin(Kx*j)*exp(-2*Kx*Kx*vlat*Tsim);
@@ -145,6 +158,7 @@ int main()
 
     //------- ABSOLUTE NUMERICAL ERROR (L2)-------
     real esum = 0; //!<  Counter for the error calculation.
+    #pragma omp parallel for reduction(+:esum)
     for (u_char j = 0; j < Ny; ++j) {
         for (u_char i = 0; i < Nx; ++i) {
             esum += pow(Ux[i+j*Nx]-Uexact[i+j*Nx],2)+pow(Uy[i+j*Nx]-Vexact[i+j*Nx],2);
