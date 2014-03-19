@@ -4,6 +4,7 @@
 #include <cassert>
 #include <array>
 #include <cstddef>
+#include <chrono>
 #include <boost/format.hpp>
 #include <limits>
 
@@ -20,6 +21,8 @@ typedef double real; //!< define precision (choose from double, float, ...)
 
 int main()
 {
+    auto start = std::chrono::steady_clock::now(); //!< start time of the app
+
     //-------GLOBAL CONSTANTS-----------------
     const real pi = 4*atan(1);
     const real eps = std::numeric_limits<real>::epsilon();
@@ -164,9 +167,17 @@ int main()
             esum += pow(Ux[i+j*Nx]-Uexact[i+j*Nx],2)+pow(Uy[i+j*Nx]-Vexact[i+j*Nx],2);
         }
     }
+
+    //-------OUTPUT----------
+    // calculate absolute error in L^2 norm and output
     real AbsL2error = sqrt(esum/(Nx*Ny));
     cout << "error: " << (boost::format(" %1.20e") % AbsL2error) << endl;
     assert(fabs(0.00087126772875501965962-AbsL2error) <= eps);
+
+    // calculate runtime and output
+    auto done = std::chrono::steady_clock::now(); //!< finishing time of the app
+    double elapsed_time = std::chrono::duration_cast<std::chrono::duration<double>>(done - start).count();
+    cerr << "calculation time: " << elapsed_time << std::endl;
 
     return 0;
 }
