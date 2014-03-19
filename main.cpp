@@ -23,13 +23,13 @@ constexpr u_short Ny = Nx; //!< Number of lattices in the y-direction.
 constexpr u_char Nl = 9; //!< Number of lattice linkages.
 
 struct point_t {
-    real f[Nl];
-    real feq[Nl];
+    real f[Nl]; //!< Particle distribution function.
+    real feq[Nl]; //!< Particle equilibrium distribution function.
     real fbak;
 
-    real Ux;
-    real Uy;
-    real rho;
+    real Ux; //!< X-component of the fluid velocity in the computational domain.
+    real Uy; //!< Y-component of the fluid velocity in the computational domain.
+    real rho; //!< Fluid density in the computational domain.
 };
 
 int main()
@@ -67,18 +67,7 @@ int main()
 
 
     //-------INITIALIZATION OF THE VARIABLES-------
-    /*
-    realm Ux; //!< X-component of the fluid velocity in the computational domain.
-    realm Uy; //!< Y-component of the fluid velocity in the computational domain.
-    realm rho; //!< Fluid density in the computational domain.
-    */
     array<point_t, Nx*Ny> points;
-    realm Uexact; //!< X-component of the fluid velocity in the physical space.
-    realm Vexact; //!< Y-component of the fluid velocity in the physical space.
-    /*
-    array<realm, Nl> feq; //!< Particle equilibrium distribution function.
-    array<realm, Nl> f; //!< Particle distribution function.
-    */
 
     u_short orow[Nl] = {}; //!<  offset for streaming, row (y)
     u_short ocol[Nl] = {}; //!<  offset for streaming, col (x)
@@ -173,22 +162,15 @@ int main()
         }
     }
 
-    //-------EXACT ANALYTICAL SOLUTION-------
-    #pragma omp parallel for
-    for (u_short j = 0; j < Ny; ++j) {
-        for (u_short i = 0; i < Nx; ++i) {
-            Uexact[i+j*Nx] = -Ulat*cos(Kx*i)*sin(Kx*j)*exp(-2*Kx*Kx*vlat*Tsim);
-            Vexact[i+j*Nx] = +Ulat*sin(Kx*i)*cos(Kx*j)*exp(-2*Kx*Kx*vlat*Tsim);
-        }
-    }
-
     //------- ABSOLUTE NUMERICAL ERROR (L2)-------
     real esum = 0; //!<  Counter for the error calculation.
     #pragma omp parallel for reduction(+:esum)
     for (u_short j = 0; j < Ny; ++j) {
         for (u_short i = 0; i < Nx; ++i) {
             point_t &p = points[i+Nx*j];
-            esum += pow(p.Ux-Uexact[i+j*Nx],2)+pow(p.Uy-Vexact[i+j*Nx],2);
+            real Uexact = -Ulat*cos(Kx*i)*sin(Kx*j)*exp(-2*Kx*Kx*vlat*Tsim);
+            real Vexact = +Ulat*sin(Kx*i)*cos(Kx*j)*exp(-2*Kx*Kx*vlat*Tsim);
+            esum += pow(p.Ux-Uexact,2)+pow(p.Uy-Vexact,2);
         }
     }
 
