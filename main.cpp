@@ -18,6 +18,19 @@ using std::endl;
 using std::array;
 
 typedef double real; //!< define precision (choose from double, float, ...)
+constexpr u_short Nx = 21; //!< Number of lattices in the x-direction.
+constexpr u_short Ny = Nx; //!< Number of lattices in the y-direction.
+constexpr u_char Nl = 9; //!< Number of lattice linkages.
+
+struct point_t {
+    real f[Nl];
+    real feq[Nl];
+    real fbak;
+
+    real Ux;
+    real Uy;
+    real rho;
+};
 
 int main()
 {
@@ -34,8 +47,6 @@ int main()
     cerr << "processors in use: " << short(num_procs) << endl;
 
     //-------SIMULATION PARAMETERS------------
-    constexpr u_short Nx = 21; //!< Number of lattices in the x-direction.
-    constexpr u_short Ny = Nx; //!< Number of lattices in the y-direction.
     typedef real realm[Nx*Ny]; //!<  real matrix, column/x-wise
     u_short Length = Nx-1; //!< Length of the square computational domain in lattice units.
     real Re = 10.0; //!< Reynolds number.
@@ -49,7 +60,6 @@ int main()
     size_t Tsim = 20; //!< Simulation time.
 
     //-------LATTICE ARRANGEMENT PARAMETERS (D2Q9)-------
-    constexpr u_char Nl = 9; //!< Number of lattice linkages.
 
     const real weight[9] = {4.0/9, 1.0/9, 1.0/9, 1.0/9, 1.0/9, 1.0/36, 1.0/36, 1.0/36, 1.0/36}; //!< Weighting factors.
     const char ex[9] = {0, 1, -1, 0, 0, 1, -1, -1, 1}; //!< X-component of the particle velocity.
@@ -57,13 +67,18 @@ int main()
 
 
     //-------INITIALIZATION OF THE VARIABLES-------
+    /*
     realm Ux; //!< X-component of the fluid velocity in the computational domain.
     realm Uy; //!< Y-component of the fluid velocity in the computational domain.
     realm rho; //!< Fluid density in the computational domain.
+    */
+    array<point_t, Nx*Ny> points;
     realm Uexact; //!< X-component of the fluid velocity in the physical space.
     realm Vexact; //!< Y-component of the fluid velocity in the physical space.
+    /*
     array<realm, Nl> feq; //!< Particle equilibrium distribution function.
     array<realm, Nl> f; //!< Particle distribution function.
+    */
 
     u_short orow[Nl] = {}; //!<  offset for streaming, row (y)
     u_short ocol[Nl] = {}; //!<  offset for streaming, col (x)
@@ -72,21 +87,24 @@ int main()
     #pragma omp parallel for
     for (u_short j = 0; j < Ny; ++j) {
         for (u_short i = 0; i < Nx; ++i) {
-            Ux[i+j*Nx] = -Ulat*cos(Kx*i)*sin(Kx*j);
-            Uy[i+j*Nx] = +Ulat*sin(Kx*i)*cos(Kx*j);
+            point_t &p = points[i+Nx*j];
+            p.Ux = -Ulat*cos(Kx*i)*sin(Kx*j);
+            p.Uy = +Ulat*sin(Kx*i)*cos(Kx*j);
+
             real P = Ro*CsSquare-0.25*Ulat*Ulat*(cos(2*Kx*i)+cos(2*Kx*j)); //!< Pressure defined in the computational space.
-            rho[i+j*Nx] = P/CsSquare;
+            p.rho = P/CsSquare;
         }
     }
 
     #pragma omp parallel for
-    for (u_char k = 0;  k <Nl; ++k) {
+    for (u_char k = 0; k < Nl; ++k) {
         for (u_short j = 0; j < Ny; ++j) {
             for (u_short i = 0; i < Nx; ++i) {
-                real term1 = ex[k]*Ux[i+Nx*j]+ey[k]*Uy[i+j*Nx];
-                real term2 = pow(Ux[i+j*Nx],2)+pow(Uy[i+j*Nx],2);
-                feq[k][i+j*Nx] = weight[k]*rho[i+j*Nx]*(1+3*term1+4.5*term1*term1-1.5*term2);
-                f  [k][i+j*Nx] = feq[k][i+j*Nx];
+                point_t &p = points[i+Nx*j];
+                real term1 = ex[k]*p.Ux+ey[k]*p.Uy;
+                real term2 = pow(p.Ux,2)+pow(p.Uy,2);
+                p.feq[k] = weight[k]*p.rho*(1+3*term1+4.5*term1*term1-1.5*term2);
+                p.f[k] = p.feq[k];
             }
         }
     }
@@ -98,7 +116,8 @@ int main()
         for (u_char k = 0; k < Nl; ++k) {
             for (u_short j = 0; j < Ny; ++j) {
                 for (u_short i = 0; i < Nx; ++i) {
-                    f[k][i+j*Nx] = f[k][i+j*Nx]*(1-omega)+omega*feq[k][i+j*Nx];
+                    point_t &p = points[i+Nx*j];
+                    p.f[k] = p.f[k]*(1-omega)+omega*p.feq[k];
                 }
             }
         }
@@ -116,17 +135,19 @@ int main()
                 real rsum = 0; //!< Fluid density counter.
                 real usum = 0; //!< Counter of the x-component of the fluid velocity.
                 real vsum = 0; //!< Counter of the y-component of the fluid velocity.
+                point_t &p = points[i+Nx*j];
                 for (u_char k = 0; k < Nl; ++k) {
                     // compute index
                     u_short nj = (Ny+j+orow[k]) % Ny;
                     u_short ni = (Nx+i+ocol[k]) % Nx;
-                    rsum += f[k][ni+nj*Nx];
-                    usum += f[k][ni+nj*Nx]*ex[k];
-                    vsum += f[k][ni+nj*Nx]*ey[k];
+                    point_t &np = points[ni+Nx*nj];
+                    rsum += np.f[k];
+                    usum += np.f[k]*ex[k];
+                    vsum += np.f[k]*ey[k];
                 }
-                rho[i+j*Nx] = rsum;
-                Ux[i+j*Nx] = usum/rsum;
-                Uy[i+j*Nx] = vsum/rsum;
+                p.rho = rsum;
+                p.Ux  = usum/rsum;
+                p.Uy  = vsum/rsum;
             }
         }
 
@@ -134,17 +155,19 @@ int main()
         #pragma omp parallel for
         for (u_short j = 0; j < Ny; ++j) {
             for (u_short i = 0; i < Nx; ++i) {
+                point_t &p = points[i+Nx*j];
                 for (u_char k = 0; k < Nl; ++k) {
                     // compute index
                     u_short nj = (j+orow[k]+Ny) % Ny;
                     u_short ni = (i+ocol[k]+Nx) % Nx;
+                    point_t &np = points[ni+Nx*nj];
 
-                    real term1 = ex[k]*Ux[i+Nx*j]+ey[k]*Uy[i+j*Nx];
-                    real term2 = Ux[i+j*Nx]*Ux[i+j*Nx]+Uy[i+j*Nx]*Uy[i+j*Nx];
+                    real term1 = ex[k]*p.Ux+ey[k]*p.Uy;
+                    real term2 = pow(p.Ux,2)+pow(p.Uy,2);
                     if(k == 0) {
                         assert(term1 == 0);
                     }
-                    feq[k][ni+nj*Nx] = weight[k]*rho[i+j*Nx]*(1+3*term1+4.5*term1*term1-1.5*term2);
+                    np.feq[k] = weight[k]*p.rho*(1+3*term1+4.5*term1*term1-1.5*term2);
                 }
             }
         }
@@ -164,7 +187,8 @@ int main()
     #pragma omp parallel for reduction(+:esum)
     for (u_short j = 0; j < Ny; ++j) {
         for (u_short i = 0; i < Nx; ++i) {
-            esum += pow(Ux[i+j*Nx]-Uexact[i+j*Nx],2)+pow(Uy[i+j*Nx]-Vexact[i+j*Nx],2);
+            point_t &p = points[i+Nx*j];
+            esum += pow(p.Ux-Uexact[i+j*Nx],2)+pow(p.Uy-Vexact[i+j*Nx],2);
         }
     }
 
@@ -172,7 +196,7 @@ int main()
     // calculate absolute error in L^2 norm and output
     real AbsL2error = sqrt(esum/(Nx*Ny));
     cout << "error: " << (boost::format(" %1.20e") % AbsL2error) << endl;
-    assert(fabs(0.00087126772875501965962-AbsL2error) <= eps);
+    assert(fabs(0.00087126772875501965962-AbsL2error) <= eps); // Tsim = 20, Nx = 21
 
     // calculate runtime and output
     auto done = std::chrono::steady_clock::now(); //!< finishing time of the app
