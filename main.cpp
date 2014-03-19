@@ -100,21 +100,26 @@ int main()
 
     //-------MAIN LOOP-------
     for (size_t t = 0; t < Tsim; ++t) {
-        //-------COLLISION-------
-        #pragma omp parallel for
         for (u_char k = 0; k < Nl; ++k) {
+
+            //-------COLLISION-------
+            #pragma omp parallel for collapse(2)
             for (u_short j = 0; j < Ny; ++j) {
                 for (u_short i = 0; i < Nx; ++i) {
                     point_t &p = points[i+Nx*j];
-                    p.f[k] = p.f[k]*(1-omega)+omega*p.feq[k];
+                    p.fbak = p.f[k]*(1-omega)+omega*p.feq[k];
                 }
             }
-        }
-
-        //-------STREAMING-------
-        for (u_char k = 0; k < Nl; ++k) {
+            //-------STREAMING-------
             orow[k] = (Ny + orow[k] - ey[k]) % Ny;
             ocol[k] = (Nx + ocol[k] - ex[k]) % Nx;
+            for (u_short j = 0; j < Ny; ++j) {
+                for (u_short i = 0; i < Nx; ++i) {
+                    point_t &p = points[i+Nx*j];
+                    p.f[k] = p.fbak;
+                }
+            }
+
         }
 
         //-------CALCULATION OF THE MACROSCOPIC VARIABLES-------
