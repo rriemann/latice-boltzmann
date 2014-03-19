@@ -5,6 +5,10 @@
 #include <array>
 #include <cstddef>
 #include <boost/format.hpp>
+#include <limits>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 using namespace std;
 
@@ -14,6 +18,7 @@ int main()
 {
 
     constexpr real pi = 4*atan(1);
+    const real eps = std::numeric_limits<real>::epsilon();
     //-------SIMULATION PARAMETERS-------
     constexpr u_char Nx = 21; //Number of lattices in the x-direction.
     constexpr u_char Ny = Nx; //Number of lattices in the y-direction.
@@ -182,7 +187,8 @@ int main()
         }
     }
     real AbsL2error = sqrt(esum/(Nx*Ny));
-    cout << "error: " << (boost::format(" %1.8e") % AbsL2error) << endl;
+    cout << "error: " << (boost::format(" %1.20e") % AbsL2error) << endl;
+    assert(fabs(0.00087126772875501965962-AbsL2error) <= eps);
 
     return 0;
 }
