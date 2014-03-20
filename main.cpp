@@ -1,8 +1,24 @@
+/***************************************************************************************
+ * Copyright (c) 2014 Robert Riemann <robert@riemann.cc>                                *
+ *                    Marianna P.
+ *                                                                                      *
+ * This program is free software; you can redistribute it and/or modify it under        *
+ * the terms of the GNU General Public License as published by the Free Software        *
+ * Foundation; either version 2 of the License, or (at your option) any later           *
+ * version.                                                                             *
+ *                                                                                      *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY      *
+ * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A      *
+ * PARTICULAR PURPOSE. See the GNU General Public License for more details.             *
+ *                                                                                      *
+ * You should have received a copy of the GNU General Public License along with         *
+ * this program.  If not, see <http://www.gnu.org/licenses/>.                           *
+ ****************************************************************************************/
 #include <iostream>
 #include <fstream>
 #include <cmath>
 #include <cassert>
-#include <array>
+#include <vector>
 #include <cstddef>
 #include <chrono>
 #include <boost/format.hpp>
@@ -16,10 +32,10 @@
 using std::cout;
 using std::cerr;
 using std::endl;
-using std::array;
+using std::vector;
 
 typedef double real; //!< define precision (choose from double, float, ...)
-constexpr u_short Nx = 21; //!< Number of lattices in the x-direction.
+constexpr u_short Nx = 500; //!< Number of lattices in the x-direction.
 constexpr u_short Ny = Nx; //!< Number of lattices in the y-direction.
 constexpr u_char Nl = 9; //!< Number of lattice linkages.
 
@@ -46,7 +62,7 @@ const real CsSquare = 1.0/3; //!< Square of the speed of sound in lattice units.
 const real Ulat = Re*vlat/Length; //!< Lattice characteristic velocity.
 const real Kx = 2*pi/Length; //!< Wavenumber in the x- and y-direction.
 const real Ro = 1.0; //!< Initial fluid density in lattice and physical units.
-const size_t Tsim = 20; //!< Simulation time.
+const size_t Tsim = 2000; //!< Simulation time.
 //-------LATTICE ARRANGEMENT PARAMETERS (D2Q9)-------
 const real weight[9] = {4.0/9, 1.0/9, 1.0/9, 1.0/9, 1.0/9, 1.0/36, 1.0/36, 1.0/36, 1.0/36}; //!< Weighting factors.
 const char ex[9] = {0, 1, -1, 0, 0, 1, -1, -1, 1}; //!< X-component of the particle velocity.
@@ -77,16 +93,13 @@ int main()
     cerr << "processors in use: " << short(num_procs) << endl;
 
     //-------INITIALIZATION OF THE VARIABLES-------
-    array<point_t, Nx*Ny> points;
+    vector<point_t> points(Nx*Ny);
 
     //-------INITIALIZATION OF THE SIMULATION (t=0)-------
     #pragma omp parallel for
     for (u_short j = 0; j < Ny; ++j) {
         for (u_short i = 0; i < Nx; ++i) {
             point_t &p = points[i+Nx*j];
-
-            // p.Ux = -Ulat*cos(Kx*i)*sin(Kx*j);
-            // p.Uy = +Ulat*sin(Kx*i)*cos(Kx*j);
             getTheory(i, j, p.Ux, p.Uy, 0);
 
             real P = Ro*CsSquare-0.25*Ulat*Ulat*(cos(2*Kx*i)+cos(2*Kx*j)); //!< Pressure defined in the computational space.
@@ -170,7 +183,7 @@ int main()
     // calculate absolute error in L^2 norm and output
     real AbsL2error = sqrt(esum/(Nx*Ny));
     cerr << "error: " << (boost::format(" %1.20e") % AbsL2error) << endl;
-    assert(fabs(0.00087126772875501965962-AbsL2error) <= eps); // Tsim = 20, Nx = 21
+    // assert(fabs(0.00087126772875501965962-AbsL2error) <= eps); // Tsim = 20, Nx = 21
     // assert(fabs(0.000557275730831370335813-AbsL2error) <= eps); // Tsim = 1, Nx = 21
 
     // calculate runtime and output
