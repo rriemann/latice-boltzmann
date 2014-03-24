@@ -35,7 +35,7 @@ using std::endl;
 using std::vector;
 
 typedef double real; //!< define precision (choose from double, float, ...)
-constexpr u_short Nx = 500; //!< Number of lattices in the x-direction.
+constexpr u_short Nx = 21; //!< Number of lattices in the x-direction.
 constexpr u_short Ny = Nx; //!< Number of lattices in the y-direction.
 constexpr u_char Nl = 9; //!< Number of lattice linkages.
 
@@ -62,7 +62,7 @@ const real CsSquare = 1.0/3; //!< Square of the speed of sound in lattice units.
 const real Ulat = Re*vlat/Length; //!< Lattice characteristic velocity.
 const real Kx = 2*pi/Length; //!< Wavenumber in the x- and y-direction.
 const real Ro = 1.0; //!< Initial fluid density in lattice and physical units.
-const size_t Tsim = 2000; //!< Simulation time.
+const size_t Tsim = 20; //!< Simulation time.
 //-------LATTICE ARRANGEMENT PARAMETERS (D2Q9)-------
 const real weight[9] = {4.0/9, 1.0/9, 1.0/9, 1.0/9, 1.0/9, 1.0/36, 1.0/36, 1.0/36, 1.0/36}; //!< Weighting factors.
 const char ex[9] = {0, 1, -1, 0, 0, 1, -1, -1, 1}; //!< X-component of the particle velocity.
@@ -183,7 +183,7 @@ int main()
     // calculate absolute error in L^2 norm and output
     real AbsL2error = sqrt(esum/(Nx*Ny));
     cerr << "error: " << (boost::format(" %1.20e") % AbsL2error) << endl;
-    // assert(fabs(0.00087126772875501965962-AbsL2error) <= eps); // Tsim = 20, Nx = 21
+    assert(fabs(0.00087126772875501965962-AbsL2error) <= eps); // Tsim = 20, Nx = 21
     // assert(fabs(0.000557275730831370335813-AbsL2error) <= eps); // Tsim = 1, Nx = 21
 
     // calculate runtime and output
