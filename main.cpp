@@ -35,7 +35,7 @@ using std::endl;
 using std::vector;
 
 typedef double real; //!< define precision (choose from double, float, ...)
-constexpr u_short Nx = 21; //!< Number of lattices in the x-direction.
+constexpr u_short Nx = 100; //!< Number of lattices in the x-direction.
 constexpr u_short Ny = Nx; //!< Number of lattices in the y-direction.
 constexpr u_char Nl = 9; //!< Number of lattice linkages.
 
@@ -53,24 +53,32 @@ struct point_t {
 const real pi = 4*atan(1);
 const real eps = std::numeric_limits<real>::epsilon();
 //-------SIMULATION PARAMETERS------------
-const u_short Length = Nx-1; //!< Length of the square computational domain in lattice units.
+const u_short Length = Nx; //!< Length of the square computational domain in lattice units.
 const real Re = 10.0; //!< Reynolds number.
 const real tau = 0.65; //!< Relaxation time.
 const real omega = 1.0/tau; //!< Relaxation frequency.
 const real vlat = (tau-0.5)/3; //!< Lattice kinematic viscosity.
 const real CsSquare = 1.0/3; //!< Square of the speed of sound in lattice units.
 const real Ulat = Re*vlat/Length; //!< Lattice characteristic velocity.
-const real Kx = 2*pi/Length; //!< Wavenumber in the x- and y-direction.
+const real Cu = 1.0/Ulat; //!< conversion factor from velocity in Latice units to physical units
+const real g_span = 1.0;
+const real Cl = g_span/Length; //!< conversion factor from latice units to physical units in space
+// const real Cl = g_span/Nx;
+const real Cl2 = Cl*Cl;
+const real Cv = Cu*Cl; //!< conversion factor from latice viscosity to physical viscosity
+const real Ct = Cl/Cu; //!< conversion from latice time to physical time
+const real Kx = 2*pi/g_span; //!< Wavenumber in the x- and y-direction in physical units
 const real Ro = 1.0; //!< Initial fluid density in lattice and physical units.
-const size_t Tsim = 20; //!< Simulation time.
+const size_t Tsim = 20000;  //!< Simulation time.
 //-------LATTICE ARRANGEMENT PARAMETERS (D2Q9)-------
 const real weight[9] = {4.0/9, 1.0/9, 1.0/9, 1.0/9, 1.0/9, 1.0/36, 1.0/36, 1.0/36, 1.0/36}; //!< Weighting factors.
 const char ex[9] = {0, 1, -1, 0, 0, 1, -1, -1, 1}; //!< X-component of the particle velocity.
 const char ey[9] = {0, 0, 0, 1, -1, 1, 1, -1, -1}; //!< Y-component of the particle velocity.
 
-inline void getTheory(const u_short i, const u_short j, real &Uexact, real &Vexact, const size_t &Tsim) {
-    Uexact = -Ulat*cos(Kx*i)*sin(Kx*j)*exp(-2*Kx*Kx*vlat*Tsim);
-    Vexact = +Ulat*sin(Kx*i)*cos(Kx*j)*exp(-2*Kx*Kx*vlat*Tsim);
+inline void getTheory(const real i, const real j, real &Uexact, real &Vexact, const size_t &Tsim) {
+    // max velocity: |1|
+    Uexact = -1.0*Ulat*cos(Kx*i)*sin(Kx*j)*exp(-2*Kx*Kx*vlat*Cl2*Tsim);
+    Vexact = +1.0*Ulat*sin(Kx*i)*cos(Kx*j)*exp(-2*Kx*Kx*vlat*Cl2*Tsim);
 }
 
 inline void equilibriumHelper(point_t &p) {
@@ -100,7 +108,7 @@ int main()
     for (u_short j = 0; j < Ny; ++j) {
         for (u_short i = 0; i < Nx; ++i) {
             point_t &p = points[i+Nx*j];
-            getTheory(i, j, p.Ux, p.Uy, 0);
+            getTheory(i*Cl, j*Cl, p.Ux, p.Uy, 0);
 
             real P = Ro*CsSquare-0.25*Ulat*Ulat*(cos(2*Kx*i)+cos(2*Kx*j)); //!< Pressure defined in the computational space.
             p.rho = P/CsSquare;
@@ -174,7 +182,7 @@ int main()
     for (u_short j = 0; j < Ny; ++j) {
         for (u_short i = 0; i < Nx; ++i) {
             point_t &p = points[i+Nx*j];
-            getTheory(i, j, Uexact, Vexact, Tsim);
+            getTheory(i*Cl, j*Cl, Uexact, Vexact, Tsim);
             esum += pow(p.Ux-Uexact,2)+pow(p.Uy-Vexact,2);
         }
     }
@@ -183,8 +191,9 @@ int main()
     // calculate absolute error in L^2 norm and output
     real AbsL2error = sqrt(esum/(Nx*Ny));
     cerr << "error: " << (boost::format(" %1.20e") % AbsL2error) << endl;
-    assert(fabs(0.00087126772875501965962-AbsL2error) <= eps); // Tsim = 20, Nx = 21
+    // assert(fabs(0.00087126772875501965962-AbsL2error) <= eps); // Tsim = 20, Nx = 21
     // assert(fabs(0.000557275730831370335813-AbsL2error) <= eps); // Tsim = 1, Nx = 21
+    // assert(fabs(0.00087577546470841180319-AbsL2error) <= eps); // Tsim = 20, Nx = 21 with getTheory(real, real, ...)
 
     // calculate runtime and output
     auto done = std::chrono::steady_clock::now(); //!< finishing time of the app
