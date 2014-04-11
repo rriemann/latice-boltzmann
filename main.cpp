@@ -114,7 +114,28 @@ int main()
             p.rho = P/CsSquare;
 
             equilibriumHelper(p);
-            std::copy(std::begin(p.feq), std::end(p.feq), std::begin(p.f));
+            std::copy(std::begin(p.feq), std::end(p.feq), std::begin(p.f)); // c++11 way for c-arrays
+            // m_f = m_feq; // c++11 way if m_f and m_feq are std::array
+            // memcpy(p.f, p.feq, sizeof(p.feq)); // pure C
+        }
+    }
+
+    // fine points
+    //-------INITIALIZATION OF THE SIMULATION (t=0)-------
+    u_short j0_fine = Ny/2+1;
+    u_short i0_fine = Nx/2+1;
+    #pragma omp parallel for
+    for (u_short j = j0_fine; j < Ny; j+=2) {
+        for (u_short i = i0_fine; i < Nx; i+=2) {
+            point_t &p = points[i+Nx*j];
+            getTheory(i*Cl, j*Cl, p.Ux, p.Uy, 0);
+
+            real P = Ro*CsSquare-0.25*Ulat*Ulat*(cos(2*Kx*i)+cos(2*Kx*j)); //!< Pressure defined in the computational space.
+            p.rho = P/CsSquare;
+
+            equilibriumHelper(p);
+            std::copy(std::begin(p.feq), std::end(p.feq), std::begin(p.f)); // c++11 way for c-arrays
+            // m_f = m_feq; // c++11 way if m_f and m_feq are std::array
             // memcpy(p.f, p.feq, sizeof(p.feq)); // pure C
         }
     }
@@ -143,12 +164,55 @@ int main()
                     p.f[k] = np.fbak;
                 }
             }
+
+            // fine points
+            //-------COLLISION-------
+            #pragma omp parallel for collapse(2)
+            for (u_short j = j0_fine; j < Ny; j+=2) {
+                for (u_short i = i0_fine; i < Nx; i+=2) {
+                    point_t &p = points[i+Nx*j];
+                    p.fbak = p.f[k]*(1-omega)+omega*p.feq[k];
+                }
+            }
+            //-------STREAMING-------
+            #pragma omp parallel for collapse(2)
+            for (u_short j = j0_fine; j < Ny; j+=2) {
+                for (u_short i = i0_fine; i < Nx; i+=2) {
+                    point_t &p = points[i+Nx*j];
+
+                    // compute index
+                    u_short nj = (Ny+j-2*ey[k]) % Ny; // TODO: fix here for fine grid
+                    u_short ni = (Nx+i-2*ex[k]) % Nx; // same
+                    point_t &np = points.at(ni+Nx*nj);
+                    p.f[k] = np.fbak;
+                }
+            }
         }
 
         //-------CALCULATION OF THE MACROSCOPIC VARIABLES-------
         #pragma omp parallel for collapse(2)
         for (u_short j = 0; j < Ny; j+=2) {
             for (u_short i = 0; i < Nx; i+=2) {
+                point_t &p = points[i+Nx*j];
+                real rsum = 0; //!< Fluid density counter.
+                real usum = 0; //!< Counter of the x-component of the fluid velocity.
+                real vsum = 0; //!< Counter of the y-component of the fluid velocity.
+                for (u_char k = 0; k < Nl; ++k) {
+                    rsum += p.f[k];
+                    usum += p.f[k]*ex[k];
+                    vsum += p.f[k]*ey[k];
+                }
+                p.rho = rsum;
+                p.Ux  = usum/rsum;
+                p.Uy  = vsum/rsum;
+            }
+        }
+
+        // fine points
+        //-------CALCULATION OF THE MACROSCOPIC VARIABLES-------
+        #pragma omp parallel for collapse(2)
+        for (u_short j = j0_fine; j < Ny; j+=2) {
+            for (u_short i = i0_fine; i < Nx; i+=2) {
                 point_t &p = points[i+Nx*j];
                 real rsum = 0; //!< Fluid density counter.
                 real usum = 0; //!< Counter of the x-component of the fluid velocity.
@@ -172,6 +236,16 @@ int main()
                 equilibriumHelper(p);
             }
         }
+
+        // fine points
+        //-------CALCULATION OF THE EQUILIBRIUM DISTRIBUTION FUNCTION-------
+        #pragma omp parallel for collapse(2)
+        for (u_short j = j0_fine; j < Ny; j+=2) {
+            for (u_short i = i0_fine; i < Nx; i+=2) {
+                point_t &p = points[i+Nx*j];
+                equilibriumHelper(p);
+            }
+        }
     }
 
     //------- ABSOLUTE NUMERICAL ERROR (L2)-------
@@ -181,6 +255,17 @@ int main()
     #pragma omp parallel for collapse(2) reduction(+:esum) private(Uexact,Vexact)
     for (u_short j = 0; j < Ny; j+=2) {
         for (u_short i = 0; i < Nx; i+=2) {
+            point_t &p = points[i+Nx*j];
+            getTheory(i*Cl, j*Cl, Uexact, Vexact, Tsim);
+            esum += pow(p.Ux-Uexact,2)+pow(p.Uy-Vexact,2);
+        }
+    }
+
+    // fine points
+    //------- ABSOLUTE NUMERICAL ERROR (L2)-------
+    #pragma omp parallel for collapse(2) reduction(+:esum) private(Uexact,Vexact)
+    for (u_short j = j0_fine; j < Ny; j+=2) {
+        for (u_short i = i0_fine; i < Nx; i+=2) {
             point_t &p = points[i+Nx*j];
             getTheory(i*Cl, j*Cl, Uexact, Vexact, Tsim);
             esum += pow(p.Ux-Uexact,2)+pow(p.Uy-Vexact,2);
