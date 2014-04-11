@@ -35,7 +35,7 @@ using std::endl;
 using std::vector;
 
 typedef double real; //!< define precision (choose from double, float, ...)
-constexpr u_short Nx = 100; //!< Number of lattices in the x-direction.
+constexpr u_short Nx = 200; //!< Number of lattices in the x-direction.
 constexpr u_short Ny = Nx; //!< Number of lattices in the y-direction.
 constexpr u_char Nl = 9; //!< Number of lattice linkages.
 
@@ -69,7 +69,7 @@ const real Cv = Cu*Cl; //!< conversion factor from latice viscosity to physical 
 const real Ct = Cl/Cu; //!< conversion from latice time to physical time
 const real Kx = 2*pi/g_span; //!< Wavenumber in the x- and y-direction in physical units
 const real Ro = 1.0; //!< Initial fluid density in lattice and physical units.
-const size_t Tsim = 20000;  //!< Simulation time.
+const size_t Tsim = 2000;  //!< Simulation time.
 //-------LATTICE ARRANGEMENT PARAMETERS (D2Q9)-------
 const real weight[9] = {4.0/9, 1.0/9, 1.0/9, 1.0/9, 1.0/9, 1.0/36, 1.0/36, 1.0/36, 1.0/36}; //!< Weighting factors.
 const char ex[9] = {0, 1, -1, 0, 0, 1, -1, -1, 1}; //!< X-component of the particle velocity.
@@ -105,8 +105,8 @@ int main()
 
     //-------INITIALIZATION OF THE SIMULATION (t=0)-------
     #pragma omp parallel for
-    for (u_short j = 0; j < Ny; ++j) {
-        for (u_short i = 0; i < Nx; ++i) {
+    for (u_short j = 0; j < Ny; j+=2) {
+        for (u_short i = 0; i < Nx; i+=2) {
             point_t &p = points[i+Nx*j];
             getTheory(i*Cl, j*Cl, p.Ux, p.Uy, 0);
 
@@ -124,21 +124,21 @@ int main()
         for (u_char k = 0; k < Nl; ++k) {
             //-------COLLISION-------
             #pragma omp parallel for collapse(2)
-            for (u_short j = 0; j < Ny; ++j) {
-                for (u_short i = 0; i < Nx; ++i) {
+            for (u_short j = 0; j < Ny; j+=2) {
+                for (u_short i = 0; i < Nx; i+=2) {
                     point_t &p = points[i+Nx*j];
                     p.fbak = p.f[k]*(1-omega)+omega*p.feq[k];
                 }
             }
             //-------STREAMING-------
             #pragma omp parallel for collapse(2)
-            for (u_short j = 0; j < Ny; ++j) {
-                for (u_short i = 0; i < Nx; ++i) {
+            for (u_short j = 0; j < Ny; j+=2) {
+                for (u_short i = 0; i < Nx; i+=2) {
                     point_t &p = points[i+Nx*j];
 
                     // compute index
-                    u_short nj = (Ny+j-ey[k]) % Ny;
-                    u_short ni = (Nx+i-ex[k]) % Nx;
+                    u_short nj = (Ny+j-2*ey[k]) % Ny;
+                    u_short ni = (Nx+i-2*ex[k]) % Nx;
                     point_t &np = points.at(ni+Nx*nj);
                     p.f[k] = np.fbak;
                 }
@@ -147,8 +147,8 @@ int main()
 
         //-------CALCULATION OF THE MACROSCOPIC VARIABLES-------
         #pragma omp parallel for collapse(2)
-        for (u_short j = 0; j < Ny; ++j) {
-            for (u_short i = 0; i < Nx; ++i) {
+        for (u_short j = 0; j < Ny; j+=2) {
+            for (u_short i = 0; i < Nx; i+=2) {
                 point_t &p = points[i+Nx*j];
                 real rsum = 0; //!< Fluid density counter.
                 real usum = 0; //!< Counter of the x-component of the fluid velocity.
@@ -166,8 +166,8 @@ int main()
 
         //-------CALCULATION OF THE EQUILIBRIUM DISTRIBUTION FUNCTION-------
         #pragma omp parallel for collapse(2)
-        for (u_short j = 0; j < Ny; ++j) {
-            for (u_short i = 0; i < Nx; ++i) {
+        for (u_short j = 0; j < Ny; j+=2) {
+            for (u_short i = 0; i < Nx; i+=2) {
                 point_t &p = points[i+Nx*j];
                 equilibriumHelper(p);
             }
@@ -179,8 +179,8 @@ int main()
     real Uexact;
     real Vexact;
     #pragma omp parallel for collapse(2) reduction(+:esum) private(Uexact,Vexact)
-    for (u_short j = 0; j < Ny; ++j) {
-        for (u_short i = 0; i < Nx; ++i) {
+    for (u_short j = 0; j < Ny; j+=2) {
+        for (u_short i = 0; i < Nx; i+=2) {
             point_t &p = points[i+Nx*j];
             getTheory(i*Cl, j*Cl, Uexact, Vexact, Tsim);
             esum += pow(p.Ux-Uexact,2)+pow(p.Uy-Vexact,2);
@@ -189,7 +189,7 @@ int main()
 
     //-------OUTPUT----------
     // calculate absolute error in L^2 norm and output
-    real AbsL2error = sqrt(esum/(Nx*Ny));
+    real AbsL2error = sqrt(4*esum/(Nx*Ny));
     cerr << "error: " << (boost::format(" %1.20e") % AbsL2error) << endl;
     // assert(fabs(0.00087126772875501965962-AbsL2error) <= eps); // Tsim = 20, Nx = 21
     // assert(fabs(0.000557275730831370335813-AbsL2error) <= eps); // Tsim = 1, Nx = 21
